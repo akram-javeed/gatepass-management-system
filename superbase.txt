@@ -1,3 +1,5 @@
 postgresql://postgres:[admin@321]@db.xdlepewaoxjndboldfgr.supabase.co:5432/postgres
 
 postgresql://postgres:admin%40321@db.xdlepewaoxjndboldfgr.supabase.co:5432/postgres
+
+postgresql://postgres:9940356779ybl@db.xdlepewaoxjndboldfgr.supabase.co:5432/postgres

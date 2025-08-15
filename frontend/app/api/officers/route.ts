@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server"
-import { pool } from "@/lib/db"
+import { callBackendAPI } from "@/lib/api"
 
 export async function GET() {
   try {
-    const result = await pool.query("SELECT id, name FROM officers ORDER BY name")
-    return NextResponse.json(result.rows)
+    const data = await callBackendAPI('/api/officers')
+    return NextResponse.json(data)
   } catch (error) {
     console.error("Error fetching officers:", error)
     return NextResponse.json({ error: "Failed to fetch officers" }, { status: 500 })

@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import bcrypt from 'bcryptjs'
-
-// ✅ Connect to PostgreSQL
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL, // use .env.local to store this
-})
+import { callBackendAPI } from "@/lib/api"
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,29 +10,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Username and password are required' }, { status: 400 })
     }
 
-    const result = await pool.query(
-      'SELECT id, username, full_name, email, role, password_hash FROM users WHERE username = $1 AND is_active = true',
-      [username]
-    )
-
-    if (result.rows.length === 0) {
-      return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 })
-    }
-
-    const user = result.rows[0]
-    const isValid = await bcrypt.compare(password, user.password_hash)
-
-    if (!isValid) {
-      return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 })
-    }
-
-    return NextResponse.json({
-      id: user.id,
-      name: user.full_name || user.username,
-      role: user.role,
-      email: user.email,
-      redirect: getRedirectPath(user.role),
+    // Call your backend auth endpoint
+    const data = await callBackendAPI('/api/auth', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
     })
+
+    // If backend returns error, pass it through
+    if (!data.id) {
+      return NextResponse.json({ error: data.error || 'Authentication failed' }, { status: 401 })
+    }
+
+    // Add redirect path based on role
+    const responseData = {
+      ...data,
+      redirect: getRedirectPath(data.role),
+    }
+
+    return NextResponse.json(responseData)
   } catch (error) {
     console.error('Login error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
