@@ -1,62 +1,50 @@
 const { Pool } = require('pg');
 
-// Render PostgreSQL connection with SSL completely disabled
+// Neon PostgreSQL connection with enhanced SSL handling
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: false, // Completely disable SSL
-  // Connection pool settings
+  ssl: {
+    rejectUnauthorized: false,
+    // Additional SSL options for Neon compatibility
+    checkServerIdentity: () => undefined
+  },
   max: 10,
-  min: 2,
+  min: 1,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
-  acquireTimeoutMillis: 60000
+  connectionTimeoutMillis: 15000,
+  // Additional options for better stability
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10000
 });
 
-// Alternative: Parse URL and use individual parameters to avoid SSL issues
-if (process.env.DATABASE_URL) {
+// Test connection with better error handling
+const testConnection = async () => {
   try {
-    const url = new URL(process.env.DATABASE_URL);
+    const client = await pool.connect();
+    console.log('✅ PostgreSQL connected successfully to Neon database');
     
-    // Create a new pool with individual parameters (no SSL)
-    const alternativePool = new Pool({
-      host: url.hostname,
-      port: parseInt(url.port) || 5432,
-      database: url.pathname.substring(1),
-      user: url.username,
-      password: url.password,
-      ssl: false, // No SSL
-      max: 10,
-      min: 2,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000
-    });
+    // Test a simple query
+    const result = await client.query('SELECT NOW() as current_time, version() as pg_version');
+    console.log('✅ Database test successful:', result.rows[0].current_time);
+    console.log('✅ PostgreSQL version:', result.rows[0].pg_version.split(' ')[0]);
     
-    console.log('🔧 Using manual connection config (SSL disabled)');
-    module.exports = alternativePool;
+    client.release();
+  } catch (err) {
+    console.error('❌ PostgreSQL connection error:', err.message);
+    console.error('❌ Error code:', err.code);
     
-    // Test this alternative connection
-    alternativePool.connect((err, client, release) => {
-      if (err) {
-        console.error('❌ Alternative connection failed:', err.message);
-        console.log('🔄 Falling back to connection string method');
-        module.exports = pool; // Fallback to original
-      } else {
-        console.log('✅ Alternative PostgreSQL connected successfully (SSL disabled)');
-        console.log('✅ Database ready for queries');
-        release();
-      }
-    });
-    
-  } catch (parseError) {
-    console.error('❌ URL parsing failed:', parseError.message);
-    console.log('🔄 Using connection string method');
-    module.exports = pool;
+    if (err.code === 'DEPTH_ZERO_SELF_SIGNED_CERT' || err.code === 'SELF_SIGNED_CERT_IN_CHAIN') {
+      console.log('💡 SSL certificate issue detected. Try updating the connection string SSL mode.');
+    }
   }
-} else {
-  module.exports = pool;
-}
+};
+
+// Test connection on startup
+testConnection();
 
 // Handle pool errors
 pool.on('error', (err) => {
   console.error('❌ Database pool error:', err.message);
 });
+
+module.exports = pool;
