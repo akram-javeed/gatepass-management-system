@@ -7,7 +7,6 @@ if (!process.env.DATABASE_URL) {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL + "?sslmode=require",
   ssl: { rejectUnauthorized: false },
-  options: "-c inet_prefer_ipv4=on" // 👈 forces IPv4
 });
 
 pool.connect()
