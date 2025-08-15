@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Gate Pass Email Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 600px; }
+        input { padding: 10px; margin: 10px 0; width: 100%; box-sizing: border-box; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; cursor: pointer; border-radius: 5px; }
+        button:hover { background: #0056b3; }
+        #result { margin-top: 20px; padding: 15px; border-radius: 5px; }
+        .success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .loading { background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+    </style>
+</head>
+<body>
+    <h1>🚪 Gate Pass Email Test</h1>
+    <p>Test the email notification system by sending a sample gate pass application email.</p>
+    
+    <div>
+        <label for="emailInput">Recipient Email Address:</label>
+        <input type="email" id="emailInput" placeholder="Enter email to receive test notification" value="cwpergatepass@gmail.com">
+        <button onclick="testEmail()">📧 Send Test Email</button>
+    </div>
+    
+    <div id="result"></div>
+
+    <script>
+        function testEmail() {
+            const email = document.getElementById('emailInput').value;
+            const resultDiv = document.getElementById('result');
+            
+            if (!email) {
+                resultDiv.innerHTML = '<div class="error">❌ Please enter an email address</div>';
+                return;
+            }
+            
+            resultDiv.innerHTML = '<div class="loading">📤 Sending test email...</div>';
+            
+            fetch('http://localhost:5000/api/gatepass/test-email', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ email: email })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            <strong>✅ Success!</strong><br>
+                            ${data.message}<br>
+                            <strong>Message ID:</strong> ${data.messageId}<br>
+                            <strong>Sent to:</strong> ${data.sentTo}<br><br>
+                            <em>Check your email inbox (and spam folder) for the test notification!</em>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="error">
+                            <strong>❌ Failed!</strong><br>
+                            <strong>Error:</strong> ${data.error}<br><br>
+                            <em>Check your server console for more details.</em>
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <strong>❌ Network Error!</strong><br>
+                        ${error}<br><br>
+                        <em>Make sure your server is running on port 5000.</em>
+                    </div>
+                `;
+            });
+        }
+    </script>
+</body>
+</html>
