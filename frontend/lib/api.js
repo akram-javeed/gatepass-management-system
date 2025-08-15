@@ -1,6 +1,5 @@
 // lib/api.js
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5000';
-
+const API_BASE = 'https://gatepass-backend-te3a.onrender.com';
 console.log('API_BASE loaded:', API_BASE); // Add this debug line
 
 export async function callBackendAPI(endpoint, options = {}) {
