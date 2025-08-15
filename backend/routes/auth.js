@@ -64,4 +64,32 @@ function getDefaultRedirect(role) {
   }
 }
 
+// Add this route to your auth.js file (after the existing routes)
+
+// Test database connection route
+router.get("/test-db", async (req, res) => {
+  try {
+    console.log("Testing database connection...");
+    
+    // Simple query to test database
+    const result = await db.query("SELECT NOW() as current_time, 'Database connection works!' as message");
+    
+    console.log("Database query successful:", result.rows[0]);
+    
+    return res.json({
+      success: true,
+      message: "Database connection is working!",
+      data: result.rows[0],
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error("Database test error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Database connection failed",
+      details: error.message
+    });
+  }
+});
+
 module.exports = router;
