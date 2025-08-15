@@ -1153,6 +1153,158 @@ router.get("/:role", async (req, res) => {
   }
 });
 
+// GET: Applications for Ch.OS/NPB
+router.get("/chos_npb", async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = (page - 1) * limit;
+    
+    console.log("Fetching applications for Ch.OS/NPB");
+    
+    // Query for applications pending with Ch.OS/NPB or already processed by them
+    const query = `
+      SELECT 
+        gpa.id,
+        gpa.loa_number,
+        gpa.contract_supervisor_name as supervisor_name,
+        gpa.supervisor_phone,
+        gpa.gate_pass_period_from,
+        gpa.gate_pass_period_to,
+        gpa.number_of_persons,
+        gpa.number_of_supervisors,
+        gpa.status,
+        gpa.rejection_reason,
+        gpa.submitted_date,
+        gpa.updated_at,
+        gpa.tool_items,
+        gpa.special_timing,
+        gpa.has_insurance,
+        gpa.has_esi,
+        gpa.labour_license,
+        gpa.inter_state_migration,
+        gpa.pdf_generated,
+        gpa.pdf_file_path,
+        gpa.sent_date,
+        gpa.email_sent_date,
+        gpa.gate_permit_number,
+        COALESCE(gpa.firm_name, f1.firm_name, f2.firm_name) as firm_name,
+        COALESCE(gpa.contractor_name, f1.contractor_name, f2.contractor_name, c.contractor_name) as contractor_name,
+        COALESCE(gpa.contractor_email, f1.email, f2.email, c.email) as contractor_email,
+        COALESCE(gpa.contractor_phone, f1.phone, f2.phone, c.phone) as contractor_phone,
+        COALESCE(gpa.contractor_address, f1.address, f2.address, c.address) as contractor_address,
+        COALESCE(gpa.firm_pan, f1.pan, f2.pan, c.pan) as pan,
+        COALESCE(gpa.firm_gst, f1.gst, f2.gst, c.gst) as gst
+      FROM gate_pass_applications gpa
+      LEFT JOIN firms f1 ON gpa.firm_id::text = f1.id::text
+      LEFT JOIN contracts c ON gpa.loa_number = c.loa_number
+      LEFT JOIN firms f2 ON c.firm_id::text = f2.id::text
+      WHERE gpa.status IN ('pending_with_chos', 'pdf_generated', 'approved')
+      ORDER BY 
+        CASE 
+          WHEN gpa.status = 'pending_with_chos' THEN 1
+          WHEN gpa.status = 'pdf_generated' THEN 2
+          ELSE 3
+        END,
+        gpa.submitted_date DESC
+      LIMIT $1 OFFSET $2
+    `;
+    
+    const result = await pool.query(query, [limit, offset]);
+    
+    console.log(`Found ${result.rows.length} applications for Ch.OS/NPB`);
+    
+    // Get total count
+    const countResult = await pool.query(
+      "SELECT COUNT(*) FROM gate_pass_applications WHERE status IN ('pending_with_chos', 'pdf_generated', 'approved')"
+    );
+    const totalCount = parseInt(countResult.rows[0].count);
+    
+    // Transform the data
+    const applications = result.rows.map(app => {
+      let toolsItems = [];
+      if (app.tool_items) {
+        try {
+          toolsItems = typeof app.tool_items === 'string' 
+            ? JSON.parse(app.tool_items) 
+            : app.tool_items;
+        } catch (error) {
+          console.error("Error parsing tool items:", error);
+          toolsItems = [];
+        }
+      }
+      
+      const formatDate = (date) => {
+        if (!date) return '';
+        try {
+          return new Date(date).toLocaleDateString('en-IN');
+        } catch {
+          return date;
+        }
+      };
+      
+      return {
+        id: app.id.toString(),
+        loaNumber: app.loa_number,
+        firmName: app.firm_name || 'N/A',
+        contractorName: app.contractor_name || 'N/A',
+        supervisorName: app.supervisor_name || 'N/A',
+        supervisorPhone: app.supervisor_phone || 'N/A',
+        numberOfPersons: app.number_of_persons?.toString() || "0",
+        numberOfSupervisors: app.number_of_supervisors?.toString() || "0",
+        gatePassPeriod: `${formatDate(app.gate_pass_period_from)} to ${formatDate(app.gate_pass_period_to)}`,
+        gatePassPeriodFrom: app.gate_pass_period_from,
+        gatePassPeriodTo: app.gate_pass_period_to,
+        status: app.status,
+        rejectionReason: app.rejection_reason,
+        submittedDate: formatDate(app.submitted_date),
+        updatedAt: formatDate(app.updated_at),
+        toolsItems: toolsItems,
+        specialTiming: Boolean(app.special_timing),
+        hasInsurance: Boolean(app.has_insurance),
+        hasEsi: Boolean(app.has_esi),
+        labourLicense: Boolean(app.labour_license),
+        interStateMigration: Boolean(app.inter_state_migration),
+        contractorEmail: app.contractor_email || 'N/A',
+        contractorPhone: app.contractor_phone || 'N/A',
+        contractorAddress: app.contractor_address || 'N/A',
+        firmPan: app.pan || 'N/A',
+        firmGst: app.gst || 'N/A',
+        pdfGenerated: Boolean(app.pdf_generated),
+        pdfFilePath: app.pdf_file_path,
+        sentDate: formatDate(app.sent_date || app.email_sent_date),
+        gatePermitNumber: app.gate_permit_number
+      };
+    });
+    
+    return res.json({
+      success: true,
+      applications: applications,
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limit)
+      },
+      summary: {
+        pending: applications.filter(a => a.status === 'pending_with_chos').length,
+        pdfGenerated: applications.filter(a => a.status === 'pdf_generated').length,
+        approved: applications.filter(a => a.status === 'approved').length
+      }
+    });
+    
+  } catch (error) {
+    console.error("Error fetching Ch.OS/NPB applications:", error);
+    return res.json({
+      success: false,
+      error: "Failed to fetch applications",
+      details: error.message
+    });
+  }
+});
+
+
+
 // GET: Get specific application with full details
 router.get("/details/:id", async (req, res) => {
   try {
@@ -1230,6 +1382,629 @@ router.get("/details/:id", async (req, res) => {
     res.status(500).json({ 
       success: false,
       error: "Failed to fetch application details" 
+    });
+  }
+});
+
+// GET: Get application approval history
+router.get("/:id/history", async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    console.log("Fetching approval history for application:", id);
+    
+    if (!id || !/^\d+$/.test(id)) {
+      return res.json({ 
+        success: false,
+        error: "Invalid application ID"
+      });
+    }
+    
+    const applicationId = parseInt(id);
+    
+    // Fetch application with all approval data and user details
+    const query = `
+      SELECT 
+        gpa.*,
+        -- SSE details
+        u_sse.full_name as sse_name,
+        u_sse.employee_id as sse_employee_id,
+        -- Safety Officer details
+        u_safety.full_name as safety_officer_name,
+        u_safety.employee_id as safety_officer_employee_id,
+        -- Officer 1 details
+        u_officer1.full_name as officer1_name,
+        u_officer1.employee_id as officer1_employee_id,
+        -- Officer 2 details
+        u_officer2.full_name as officer2_name,
+        u_officer2.employee_id as officer2_employee_id,
+        -- Firm details
+        f.firm_name,
+        f.contractor_name
+      FROM gate_pass_applications gpa
+      LEFT JOIN users u_sse ON gpa.approved_by_sse_id = u_sse.id
+      LEFT JOIN users u_safety ON gpa.approved_by_safety_id = u_safety.id
+      LEFT JOIN users u_officer1 ON gpa.assigned_officer1_id = u_officer1.id
+      LEFT JOIN users u_officer2 ON gpa.assigned_officer2_id = u_officer2.id
+      LEFT JOIN firms f ON gpa.firm_id::text = f.id::text
+      WHERE gpa.id = $1
+    `;
+    
+    const result = await pool.query(query, [applicationId]);
+    
+    if (result.rows.length === 0) {
+      return res.json({ 
+        success: false,
+        error: "Application not found"
+      });
+    }
+    
+    const app = result.rows[0];
+    
+    // Build approval history timeline
+    const approvalHistory = [];
+    
+    // 1. Submission
+    approvalHistory.push({
+      stage: 'submission',
+      title: 'Application Submitted',
+      status: 'completed',
+      date: app.submitted_date,
+      user: app.contractor_name || 'Contractor',
+      userRole: 'Contractor',
+      remarks: 'Application submitted for review',
+      icon: 'FileText'
+    });
+    
+    // 2. SSE Review
+    if (app.sse_action) {
+      approvalHistory.push({
+        stage: 'sse_review',
+        title: 'SSE Review',
+        status: app.sse_action === 'approved' ? 'approved' : 'rejected',
+        date: app.approved_by_sse_date,
+        user: app.sse_name || 'SSE',
+        userId: app.approved_by_sse_id,
+        employeeId: app.sse_employee_id,
+        userRole: 'Senior Section Engineer',
+        action: app.sse_action,
+        remarks: app.sse_remarks,
+        icon: 'UserCheck'
+      });
+    } else if (app.status === 'pending_with_sse') {
+      approvalHistory.push({
+        stage: 'sse_review',
+        title: 'SSE Review',
+        status: 'pending',
+        user: 'Pending SSE Review',
+        userRole: 'Senior Section Engineer',
+        icon: 'Clock'
+      });
+    }
+    
+    // 3. Safety Officer Review
+    if (app.safety_action) {
+      approvalHistory.push({
+        stage: 'safety_review',
+        title: 'Safety Officer Review',
+        status: app.safety_action === 'approved' ? 'approved' : 'rejected',
+        date: app.approved_by_safety_date,
+        user: app.safety_officer_name || 'Safety Officer',
+        userId: app.approved_by_safety_id,
+        employeeId: app.safety_officer_employee_id,
+        userRole: 'Safety Officer',
+        action: app.safety_action,
+        remarks: app.safety_remarks,
+        forwardedTo: app.forwarded_to_officer,
+        icon: 'Shield'
+      });
+    } else if (app.status === 'pending_with_safety') {
+      approvalHistory.push({
+        stage: 'safety_review',
+        title: 'Safety Officer Review',
+        status: 'pending',
+        user: 'Pending Safety Review',
+        userRole: 'Safety Officer',
+        icon: 'Clock'
+      });
+    }
+    
+    // 4. Officer Review (Officer1 or Officer2)
+    if (app.forwarded_to_officer === 'officer1' && (app.officer1_status || app.status === 'pending_with_officer1')) {
+      approvalHistory.push({
+        stage: 'officer1_review',
+        title: 'Officer 1 Review',
+        status: app.officer1_status === 'approved' ? 'approved' : 
+                app.officer1_status === 'rejected' ? 'rejected' : 'pending',
+        date: app.officer1_reviewed_date,
+        user: app.officer1_name || 'Officer 1',
+        userId: app.assigned_officer1_id,
+        employeeId: app.officer1_employee_id,
+        userRole: 'Officer 1',
+        action: app.officer1_status,
+        remarks: app.officer1_remarks,
+        icon: app.officer1_status === 'approved' ? 'CheckCircle' : 
+              app.officer1_status === 'rejected' ? 'XCircle' : 'Clock'
+      });
+    }
+    
+    if (app.forwarded_to_officer === 'officer2' && (app.officer2_status || app.status === 'pending_with_officer2')) {
+      approvalHistory.push({
+        stage: 'officer2_review',
+        title: 'Factory Manager Review',
+        status: app.officer2_status === 'approved' ? 'approved' : 
+                app.officer2_status === 'rejected' ? 'rejected' : 'pending',
+        date: app.officer2_reviewed_date,
+        user: app.officer2_name || 'Factory Manager',
+        userId: app.assigned_officer2_id,
+        employeeId: app.officer2_employee_id,
+        userRole: 'Factory Manager (Officer 2)',
+        action: app.officer2_status,
+        remarks: app.officer2_remarks,
+        icon: app.officer2_status === 'approved' ? 'CheckCircle' : 
+              app.officer2_status === 'rejected' ? 'XCircle' : 'Clock'
+      });
+    }
+    
+    // 5. Final Status
+    if (app.final_status === 'approved') {
+      approvalHistory.push({
+        stage: 'final',
+        title: 'Application Approved',
+        status: 'completed',
+        date: app.updated_at,
+        remarks: 'Gate pass application fully approved',
+        icon: 'CheckCircle'
+      });
+    } else if (app.final_status === 'rejected') {
+      approvalHistory.push({
+        stage: 'final',
+        title: 'Application Rejected',
+        status: 'rejected',
+        date: app.updated_at,
+        remarks: app.rejection_reason,
+        icon: 'XCircle'
+      });
+    }
+    
+    // Format dates
+    const formatDate = (date) => {
+      if (!date) return null;
+      return new Date(date).toLocaleString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    };
+    
+    approvalHistory.forEach(item => {
+      if (item.date) {
+        item.formattedDate = formatDate(item.date);
+      }
+    });
+    
+    return res.json({
+      success: true,
+      applicationId: applicationId,
+      loaNumber: app.loa_number,
+      currentStatus: app.status,
+      finalStatus: app.final_status,
+      approvalHistory: approvalHistory,
+      summary: {
+        totalStages: approvalHistory.length,
+        completedStages: approvalHistory.filter(h => h.status === 'approved' || h.status === 'completed').length,
+        pendingStages: approvalHistory.filter(h => h.status === 'pending').length,
+        rejectedStages: approvalHistory.filter(h => h.status === 'rejected').length
+      }
+    });
+    
+  } catch (error) {
+    console.error("Error fetching approval history:", error);
+    return res.json({
+      success: false,
+      error: "Failed to fetch approval history",
+      details: error.message
+    });
+  }
+});
+
+// GET: Applications for Officer 1
+router.get("/officer1", async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = (page - 1) * limit;
+    
+    console.log("Fetching applications for Officer 1");
+    
+    // Updated query to get firm details from multiple sources
+    const query = `
+      SELECT 
+        gpa.id,
+        gpa.loa_number,
+        gpa.contract_supervisor_name as supervisor_name,
+        gpa.supervisor_phone,
+        gpa.gate_pass_period_from,
+        gpa.gate_pass_period_to,
+        gpa.number_of_persons,
+        gpa.number_of_supervisors,
+        gpa.status,
+        gpa.rejection_reason,
+        gpa.submitted_date,
+        gpa.updated_at,
+        gpa.tool_items,
+        gpa.special_timing,
+        gpa.has_insurance,
+        gpa.has_esi,
+        gpa.labour_license,
+        gpa.inter_state_migration,
+        gpa.firm_id,
+        -- Try to get firm details from multiple sources
+        COALESCE(gpa.firm_name, f1.firm_name, f2.firm_name) as firm_name,
+        COALESCE(gpa.contractor_name, f1.contractor_name, f2.contractor_name, c.contractor_name) as contractor_name,
+        COALESCE(gpa.contractor_email, f1.email, f2.email, c.email) as contractor_email,
+        COALESCE(gpa.contractor_phone, f1.phone, f2.phone, c.phone) as contractor_phone,
+        COALESCE(gpa.contractor_address, f1.address, f2.address, c.address) as contractor_address,
+        COALESCE(gpa.firm_pan, f1.pan, f2.pan, c.pan) as pan,
+        COALESCE(gpa.firm_gst, f1.gst, f2.gst, c.gst) as gst
+      FROM gate_pass_applications gpa
+      LEFT JOIN firms f1 ON gpa.firm_id::text = f1.id::text
+      LEFT JOIN contracts c ON gpa.loa_number = c.loa_number
+      LEFT JOIN firms f2 ON c.firm_id::text = f2.id::text
+      WHERE gpa.status = 'pending_with_officer1'
+      ORDER BY gpa.submitted_date DESC
+      LIMIT $1 OFFSET $2
+    `;
+    
+    const result = await pool.query(query, [limit, offset]);
+    
+    console.log(`Found ${result.rows.length} applications pending with Officer 1`);
+    
+    // Get total count
+    const countResult = await pool.query(
+      "SELECT COUNT(*) FROM gate_pass_applications WHERE status = 'pending_with_officer1'"
+    );
+    const totalCount = parseInt(countResult.rows[0].count);
+    
+    // Transform the data
+    const applications = result.rows.map(app => {
+      let toolsItems = [];
+      if (app.tool_items) {
+        try {
+          toolsItems = typeof app.tool_items === 'string' 
+            ? JSON.parse(app.tool_items) 
+            : app.tool_items;
+        } catch (error) {
+          console.error("Error parsing tool items:", error);
+          toolsItems = [];
+        }
+      }
+      
+      const formatDate = (date) => {
+        if (!date) return '';
+        try {
+          return new Date(date).toLocaleDateString('en-IN');
+        } catch {
+          return date;
+        }
+      };
+      
+      return {
+        id: app.id.toString(),
+        loaNumber: app.loa_number,
+        firmName: app.firm_name || 'N/A',
+        contractorName: app.contractor_name || 'N/A',
+        supervisorName: app.supervisor_name || 'N/A',
+        supervisorPhone: app.supervisor_phone || 'N/A',
+        numberOfPersons: app.number_of_persons?.toString() || "0",
+        numberOfSupervisors: app.number_of_supervisors?.toString() || "0",
+        gatePassPeriod: `${formatDate(app.gate_pass_period_from)} to ${formatDate(app.gate_pass_period_to)}`,
+        gatePassPeriodFrom: app.gate_pass_period_from,
+        gatePassPeriodTo: app.gate_pass_period_to,
+        status: app.status,
+        rejectionReason: app.rejection_reason,
+        submittedDate: formatDate(app.submitted_date),
+        updatedAt: formatDate(app.updated_at),
+        toolsItems: toolsItems,
+        specialTiming: Boolean(app.special_timing),
+        hasInsurance: Boolean(app.has_insurance),
+        hasEsi: Boolean(app.has_esi),
+        labourLicense: Boolean(app.labour_license),
+        interStateMigration: Boolean(app.inter_state_migration),
+        contractorEmail: app.contractor_email || 'N/A',
+        contractorPhone: app.contractor_phone || 'N/A',
+        contractorAddress: app.contractor_address || 'N/A',
+        firmPan: app.pan || 'N/A',
+        firmGst: app.gst || 'N/A'
+      };
+    });
+
+    return res.json({
+      success: true,
+      applications: applications,
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limit)
+      }
+    });
+    
+  } catch (error) {
+    console.error("Error fetching officer1 applications:", error);
+    return res.json({
+      success: false,
+      error: "Failed to fetch applications",
+      details: error.message
+    });
+  }
+});
+
+// GET: Applications for Officer 2
+router.get("/officer2", async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = (page - 1) * limit;
+    
+    console.log("Fetching applications for Officer 2");
+    
+    const query = `
+      SELECT 
+        gpa.id,
+        gpa.loa_number,
+        gpa.contract_supervisor_name as supervisor_name,
+        gpa.supervisor_phone,
+        gpa.gate_pass_period_from,
+        gpa.gate_pass_period_to,
+        gpa.number_of_persons,
+        gpa.number_of_supervisors,
+        gpa.status,
+        gpa.rejection_reason,
+        gpa.submitted_date,
+        gpa.updated_at,
+        gpa.tool_items,
+        gpa.special_timing,
+        gpa.has_insurance,
+        gpa.has_esi,
+        gpa.labour_license,
+        gpa.inter_state_migration,
+        gpa.firm_id,
+        COALESCE(gpa.firm_name, f1.firm_name, f2.firm_name) as firm_name,
+        COALESCE(gpa.contractor_name, f1.contractor_name, f2.contractor_name, c.contractor_name) as contractor_name,
+        COALESCE(gpa.contractor_email, f1.email, f2.email, c.email) as contractor_email,
+        COALESCE(gpa.contractor_phone, f1.phone, f2.phone, c.phone) as contractor_phone,
+        COALESCE(gpa.contractor_address, f1.address, f2.address, c.address) as contractor_address,
+        COALESCE(gpa.firm_pan, f1.pan, f2.pan, c.pan) as pan,
+        COALESCE(gpa.firm_gst, f1.gst, f2.gst, c.gst) as gst
+      FROM gate_pass_applications gpa
+      LEFT JOIN firms f1 ON gpa.firm_id::text = f1.id::text
+      LEFT JOIN contracts c ON gpa.loa_number = c.loa_number
+      LEFT JOIN firms f2 ON c.firm_id::text = f2.id::text
+      WHERE gpa.status = 'pending_with_officer2'
+      ORDER BY gpa.submitted_date DESC
+      LIMIT $1 OFFSET $2
+    `;
+    
+    const result = await pool.query(query, [limit, offset]);
+    
+    console.log(`Found ${result.rows.length} applications pending with Officer 2`);
+    
+    // Get total count
+    const countResult = await pool.query(
+      "SELECT COUNT(*) FROM gate_pass_applications WHERE status = 'pending_with_officer2'"
+    );
+    const totalCount = parseInt(countResult.rows[0].count);
+    
+    // Transform the data (same as officer1)
+    const applications = result.rows.map(app => {
+      let toolsItems = [];
+      if (app.tool_items) {
+        try {
+          toolsItems = typeof app.tool_items === 'string' 
+            ? JSON.parse(app.tool_items) 
+            : app.tool_items;
+        } catch (error) {
+          console.error("Error parsing tool items:", error);
+          toolsItems = [];
+        }
+      }
+      
+      const formatDate = (date) => {
+        if (!date) return '';
+        try {
+          return new Date(date).toLocaleDateString('en-IN');
+        } catch {
+          return date;
+        }
+      };
+      
+      return {
+        id: app.id.toString(),
+        loaNumber: app.loa_number,
+        firmName: app.firm_name || 'N/A',
+        contractorName: app.contractor_name || 'N/A',
+        supervisorName: app.supervisor_name || 'N/A',
+        supervisorPhone: app.supervisor_phone || 'N/A',
+        numberOfPersons: app.number_of_persons?.toString() || "0",
+        numberOfSupervisors: app.number_of_supervisors?.toString() || "0",
+        gatePassPeriod: `${formatDate(app.gate_pass_period_from)} to ${formatDate(app.gate_pass_period_to)}`,
+        gatePassPeriodFrom: app.gate_pass_period_from,
+        gatePassPeriodTo: app.gate_pass_period_to,
+        status: app.status,
+        rejectionReason: app.rejection_reason,
+        submittedDate: formatDate(app.submitted_date),
+        updatedAt: formatDate(app.updated_at),
+        toolsItems: toolsItems,
+        specialTiming: Boolean(app.special_timing),
+        hasInsurance: Boolean(app.has_insurance),
+        hasEsi: Boolean(app.has_esi),
+        labourLicense: Boolean(app.labour_license),
+        interStateMigration: Boolean(app.inter_state_migration),
+        contractorEmail: app.contractor_email || 'N/A',
+        contractorPhone: app.contractor_phone || 'N/A',
+        contractorAddress: app.contractor_address || 'N/A',
+        firmPan: app.pan || 'N/A',
+        firmGst: app.gst || 'N/A'
+      };
+    });
+
+    return res.json({
+      success: true,
+      applications: applications,
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limit)
+      }
+    });
+    
+  } catch (error) {
+    console.error("Error fetching officer2 applications:", error);
+    return res.json({
+      success: false,
+      error: "Failed to fetch applications",
+      details: error.message
+    });
+  }
+});
+
+// GET: Applications for Safety Officer
+router.get("/safety_officer", async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = (page - 1) * limit;
+    
+    console.log("Fetching applications for Safety Officer");
+    console.log(`Page: ${page}, Limit: ${limit}, Offset: ${offset}`);
+    
+    // Query for applications pending with safety officer
+    const query = `
+      SELECT 
+        gpa.id,
+        gpa.loa_number,
+        gpa.contract_supervisor_name as supervisor_name,
+        gpa.supervisor_phone,
+        gpa.gate_pass_period_from,
+        gpa.gate_pass_period_to,
+        gpa.number_of_persons,
+        gpa.number_of_supervisors,
+        gpa.status,
+        gpa.rejection_reason,
+        gpa.submitted_date,
+        gpa.updated_at,
+        gpa.tool_items,
+        gpa.special_timing,
+        gpa.has_insurance,
+        gpa.has_esi,
+        gpa.labour_license,
+        gpa.inter_state_migration,
+        COALESCE(gpa.firm_name, f.firm_name) as firm_name,
+        COALESCE(gpa.contractor_name, f.contractor_name) as contractor_name,
+        COALESCE(gpa.contractor_email, f.email) as contractor_email,
+        COALESCE(gpa.contractor_phone, f.phone) as contractor_phone,
+        COALESCE(gpa.contractor_address, f.address) as contractor_address,
+        COALESCE(gpa.firm_pan, f.pan) as pan,
+        COALESCE(gpa.firm_gst, f.gst) as gst
+      FROM gate_pass_applications gpa
+      LEFT JOIN firms f ON gpa.firm_id::text = f.id::text
+      WHERE gpa.status = 'pending_with_safety'
+      ORDER BY gpa.submitted_date DESC
+      LIMIT $1 OFFSET $2
+    `;
+    
+    const result = await pool.query(query, [limit, offset]);
+    
+    console.log(`Found ${result.rows.length} applications pending with safety`);
+    
+    // Get total count
+    const countResult = await pool.query(
+      "SELECT COUNT(*) FROM gate_pass_applications WHERE status = 'pending_with_safety'"
+    );
+    const totalCount = parseInt(countResult.rows[0].count);
+    
+    console.log(`Total applications pending with safety: ${totalCount}`);
+    
+    // Transform the data
+    const applications = result.rows.map(app => {
+      let toolsItems = [];
+      if (app.tool_items) {
+        try {
+          toolsItems = typeof app.tool_items === 'string' 
+            ? JSON.parse(app.tool_items) 
+            : app.tool_items;
+        } catch (error) {
+          console.error("Error parsing tool items:", error);
+          toolsItems = [];
+        }
+      }
+      
+      // Format dates
+      const formatDate = (date) => {
+        if (!date) return '';
+        try {
+          return new Date(date).toLocaleDateString('en-IN');
+        } catch {
+          return date;
+        }
+      };
+      
+      return {
+        id: app.id.toString(),
+        loaNumber: app.loa_number,
+        firmName: app.firm_name || 'N/A',
+        contractorName: app.contractor_name || 'N/A',
+        supervisorName: app.supervisor_name,
+        supervisorPhone: app.supervisor_phone,
+        numberOfPersons: app.number_of_persons?.toString() || "0",
+        numberOfSupervisors: app.number_of_supervisors?.toString() || "0",
+        gatePassPeriod: `${formatDate(app.gate_pass_period_from)} to ${formatDate(app.gate_pass_period_to)}`,
+        gatePassPeriodFrom: app.gate_pass_period_from,
+        gatePassPeriodTo: app.gate_pass_period_to,
+        status: app.status,
+        rejectionReason: app.rejection_reason,
+        submittedDate: formatDate(app.submitted_date),
+        updatedAt: formatDate(app.updated_at),
+        toolsItems: toolsItems,
+        specialTiming: app.special_timing,
+        hasInsurance: app.has_insurance,
+        hasEsi: app.has_esi,
+        labourLicense: app.labour_license,
+        interStateMigration: app.inter_state_migration,
+        contractorEmail: app.contractor_email || 'N/A',
+        contractorPhone: app.contractor_phone || 'N/A',
+        contractorAddress: app.contractor_address || 'N/A',
+        firmPan: app.pan || 'N/A',
+        firmGst: app.gst || 'N/A'
+      };
+    });
+    
+    return res.json({
+      success: true,
+      applications: applications,
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limit)
+      },
+      debug: {
+        totalFound: totalCount,
+        currentPage: page,
+        statusFilter: 'pending_with_safety'
+      }
+    });
+    
+  } catch (error) {
+    console.error("Error fetching safety officer applications:", error);
+    return res.json({
+      success: false,
+      error: "Failed to fetch applications",
+      details: error.message
     });
   }
 });

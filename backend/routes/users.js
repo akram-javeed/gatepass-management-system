@@ -231,4 +231,47 @@ router.patch("/:id/status", async (req, res) => {
   }
 });
 
+// GET /api/users/officers - Get officers with detailed info for forms
+router.get("/officers", async (req, res) => {
+  try {
+    // Fetch users with role 'officer1' or 'officer2'
+    const result = await pool.query(`
+      SELECT 
+        id,
+        full_name,
+        employee_id,
+        role,
+        email
+      FROM users 
+      WHERE role IN ('officer1', 'officer2')
+      AND is_active = true
+      ORDER BY role, full_name
+    `);
+    
+    console.log(`Found ${result.rows.length} officers`);
+    
+    const officers = result.rows.map(officer => ({
+      id: officer.id,
+      name: officer.full_name,
+      employeeId: officer.employee_id,
+      role: officer.role,
+      email: officer.email,
+      displayName: `${officer.full_name} (${officer.role === 'officer2' ? 'Factory Manager' : 'Officer 1'})${officer.employee_id ? ' - ' + officer.employee_id : ''}`
+    }));
+    
+    return res.json({
+      success: true,
+      officers: officers
+    });
+    
+  } catch (error) {
+    console.error("Error fetching officers:", error);
+    return res.json({
+      success: false,
+      error: "Failed to fetch officers",
+      details: error.message
+    });
+  }
+});
+
 module.exports = router;

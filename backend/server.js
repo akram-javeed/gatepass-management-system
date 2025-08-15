@@ -36,12 +36,21 @@ const fileRoutes = require("./routes/files");
 app.use("/api/files", fileRoutes);
 
 const temporaryPassesRouter = require('./routes/temporaryPasses');
-app.use('/api/temporary-passes', temporaryPassesRouter);
+app.use('/api/temporary-gate-pass', temporaryPassesRouter);
 
 app.use('/api/contracts', contractsRoute);
 
 const safetyRoutes = require("./routes/safety");
 app.use("/api/safety", safetyRoutes);
+
+const officersRoutes = require('./routes/officers');
+app.use("/api/officers", officersRoutes);
+
+const shopsRoutes = require('./routes/shops');
+app.use("/api/shops", shopsRoutes);
+
+const sseRoutes = require('./routes/sse');
+app.use("/api/sse", sseRoutes);
 
 // ✅ IMPORTANT: Gate pass routes
 app.use('/api/gatepass', require('./routes/applications'));
