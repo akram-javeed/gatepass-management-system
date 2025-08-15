@@ -1,9 +1,9 @@
 const { Pool } = require('pg');
 
-// Render PostgreSQL connection configuration
+// Render PostgreSQL connection with SSL completely disabled
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  ssl: false, // Completely disable SSL
   // Connection pool settings
   max: 10,
   min: 2,
@@ -12,39 +12,51 @@ const pool = new Pool({
   acquireTimeoutMillis: 60000
 });
 
-// Test connection on startup
-const testConnection = async () => {
+// Alternative: Parse URL and use individual parameters to avoid SSL issues
+if (process.env.DATABASE_URL) {
   try {
-    const client = await pool.connect();
-    console.log('✅ PostgreSQL connected successfully to Render database');
-    console.log('✅ Database ready for queries');
+    const url = new URL(process.env.DATABASE_URL);
     
-    // Test a simple query
-    const result = await client.query('SELECT NOW() as current_time');
-    console.log('✅ Database test query successful:', result.rows[0].current_time);
+    // Create a new pool with individual parameters (no SSL)
+    const alternativePool = new Pool({
+      host: url.hostname,
+      port: parseInt(url.port) || 5432,
+      database: url.pathname.substring(1),
+      user: url.username,
+      password: url.password,
+      ssl: false, // No SSL
+      max: 10,
+      min: 2,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000
+    });
     
-    client.release();
-  } catch (err) {
-    console.error('❌ PostgreSQL connection error:', err.message);
-    console.error('❌ Error code:', err.code);
+    console.log('🔧 Using manual connection config (SSL disabled)');
+    module.exports = alternativePool;
+    
+    // Test this alternative connection
+    alternativePool.connect((err, client, release) => {
+      if (err) {
+        console.error('❌ Alternative connection failed:', err.message);
+        console.log('🔄 Falling back to connection string method');
+        module.exports = pool; // Fallback to original
+      } else {
+        console.log('✅ Alternative PostgreSQL connected successfully (SSL disabled)');
+        console.log('✅ Database ready for queries');
+        release();
+      }
+    });
+    
+  } catch (parseError) {
+    console.error('❌ URL parsing failed:', parseError.message);
+    console.log('🔄 Using connection string method');
+    module.exports = pool;
   }
-};
-
-// Test connection on startup
-testConnection();
+} else {
+  module.exports = pool;
+}
 
 // Handle pool errors
 pool.on('error', (err) => {
   console.error('❌ Database pool error:', err.message);
 });
-
-// Graceful shutdown
-process.on('SIGINT', () => {
-  console.log('🔄 Shutting down database pool...');
-  pool.end(() => {
-    console.log('✅ Database pool closed');
-    process.exit(0);
-  });
-});
-
-module.exports = pool;
