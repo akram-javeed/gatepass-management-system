@@ -1,14 +1,8 @@
 const { Pool } = require("pg");
 
 const pool = new Pool({
-  host: 'db.xdlepewaoxjndboldfgr.supabase.co',
-  port: 5432,
-  database: 'postgres',
-  user: 'postgres',
-  password: process.env.DB_PASSWORD,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
 pool.connect()
