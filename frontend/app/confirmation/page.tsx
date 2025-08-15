@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useEffect, useState } from "react"
+import { useEffect, useState, Suspense } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -18,7 +18,20 @@ interface ApprovalStep {
   estimatedTime: string
 }
 
-export default function ConfirmationPage() {
+// Loading component for Suspense fallback
+function ConfirmationLoading() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
+        <p className="text-lg text-gray-600">Loading confirmation details...</p>
+      </div>
+    </div>
+  )
+}
+
+// Component that uses useSearchParams (wrapped in Suspense)
+function ConfirmationContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [applicationData, setApplicationData] = useState<{
@@ -391,5 +404,14 @@ export default function ConfirmationPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+// Main page component with Suspense wrapper
+export default function ConfirmationPage() {
+  return (
+    <Suspense fallback={<ConfirmationLoading />}>
+      <ConfirmationContent />
+    </Suspense>
   )
 }
