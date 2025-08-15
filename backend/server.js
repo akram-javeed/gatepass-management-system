@@ -50,6 +50,8 @@ app.get('/', (req, res) => {
   res.send('Backend is running');
 });
 
+app.get("/health", (req, res) => res.send("OK"));
+
 // ✅ REMOVED: Duplicate CORS configurations that were causing conflicts
 
 const PORT = process.env.PORT || 5000;
